@@ -2,26 +2,65 @@ import datetime
 import functools
 import gzip
 import json
+import logging
 import os
 import re
-import time
+import socket
+import uuid
 from typing import List, Optional, TypeVar, Callable
-from ddtrace import tracer
-import logging
-from ddtrace import patch
 
-patch(logging=True)
-
+import pyroscope
 from flask import Flask, request, jsonify
+from opentelemetry import trace
+from opentelemetry.sdk.resources import (Resource)
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter
+from pyroscope.otel import PyroscopeSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-import ddtrace.profiling.auto
+exporter = OTLPSpanExporter(endpoint='http://127.0.0.1:4317', insecure=True, timeout=30)
+
+UUID = uuid.uuid1()
+
+provider = TracerProvider(resource=Resource(attributes={
+    "service.name": "python-pyro-demo",
+    "service.version": "v3.5.7",
+    "service.env": "dev",
+    "host": socket.gethostname(),
+    "process_id": os.getpid(),
+    "runtime_id": str(UUID),
+}))
+
+provider.add_span_processor(PyroscopeSpanProcessor())
+provider.add_span_processor(SimpleSpanProcessor(span_exporter=ConsoleSpanExporter()))
+provider.add_span_processor(BatchSpanProcessor(span_exporter=exporter, max_queue_size=100, max_export_batch_size=30))
+trace.set_tracer_provider(provider)
+tracer = trace.get_tracer("python-pyro-demo")
 
 I = TypeVar('I')
 O = TypeVar('O')
 
-FORMAT = ('%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] '
-          '[dd.service=%(dd.service)s dd.env=%(dd.env)s dd.version=%(dd.version)s dd.trace_id=%(dd.trace_id)s dd.span_id=%(dd.span_id)s] '
-          '- %(message)s')
+pyroscope.configure(
+    app_name="python-pyro-demo",
+    application_name="python-pyro-demo",
+    server_address="http://localhost:9529",
+    detect_subprocesses=True,
+    oncpu=True,
+    enable_logging=True,
+    report_pid=True,
+    report_thread_id=True,
+    report_thread_name=True,
+    tags={
+        "host": socket.gethostname(),
+        "service": 'python-pyro-demo',
+        "version": 'v0.2.3',
+        "env": "testing",
+        "process_id": os.getpid(),
+        "runtime_id": str(UUID),
+    }
+)
+
+FORMAT = '%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s'
 logging.basicConfig(format=FORMAT)
 log = logging.getLogger(__name__)
 log.level = logging.DEBUG
@@ -69,7 +108,7 @@ def main():
 
 
 @app.route('/movies')
-@tracer.wrap()
+@tracer.start_as_current_span("movies")
 def movies():
     log.info("/movies receive request")
 
@@ -77,11 +116,11 @@ def movies():
 
     movies_list = get_movies()
 
-    num = 40
+    num = 37
     fib = fibonacci(num)
     log.info("fibonacci(%d) = %d", num, fib)
 
-    num = 39
+    num = 36
     fib = fibonacci(num)
     log.info("fibonacci(%d) = %d", num, fib)
 
@@ -98,9 +137,19 @@ def movies():
 def fibonacci(num: int):
     if num <= 2:
         return 1
-    return fibonacci(num-1) + fibonacci(num-2)
+    if num % 29 == 0:
+        return fibonacci_with_tracing(num-1) + fibonacci(num-2)
+    return fibonacci(num - 1) + fibonacci(num - 2)
 
 
+@tracer.start_as_current_span("fibonacci")
+def fibonacci_with_tracing(num: int):
+    if num <= 2:
+        return 1
+    return fibonacci(num-1) + fibonacci(num - 2)
+
+
+@tracer.start_as_current_span("sort_desc_release_date")
 def sort_desc_release_date(movies_list: List[Movie]) -> List[Movie]:
     # Problem: We are parsing a datetime for each comparison during sort
     # Example Solution:
@@ -121,19 +170,14 @@ def sort_desc_release_date(movies_list: List[Movie]) -> List[Movie]:
 
 
 def get_movies() -> List[Movie]:
-    global CACHED_MOVIES
-
-    if CACHED_MOVIES:
-        return CACHED_MOVIES
-
     return load_movies()
 
 
+@tracer.start_as_current_span("load_movies")
 def load_movies():
-    global CACHED_MOVIES
     with gzip.open(os.path.join(SERVER_DIR, "./movies5000.json.gz")) as f:
-        CACHED_MOVIES = [Movie(d) for d in json.load(f)]
-        return CACHED_MOVIES
+        movies_list = [Movie(d) for d in json.load(f)]
+        return movies_list
 
 
 if __name__ == '__main__':
