@@ -1,10 +1,10 @@
 FROM python:3.10.11-bullseye
 LABEL authors="guance.com" email="zhangyi905@guance.com"
-WORKDIR /usr/local/python-profiling-demo
+WORKDIR /usr/local/python-pyro-demo
 COPY . ./
 RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
-ENV DD_SERVICE "python-profiling-demo"
+ENV DD_SERVICE "python-pyro-demo"
 ENV DD_VERSION "v0.0.1"
 ENV DD_ENV testing
 ENV DD_AGENT_HOST 127.0.0.1

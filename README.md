@@ -1,4 +1,4 @@
-# python-profiling-demo
+# python-pyro-demo
 
 观测云Continuous Profiling 示例程序（python）
 
@@ -7,20 +7,16 @@
 ### 安装依赖
 
 ```shell
-$ cd python-profiling-demo
+$ cd python-pyro-demo
+$ python3 -m venv venv
+$ source venv/bin/activate
 $ pip3 install --no-cache-dir -r ./requirements.txt
 ```
 
 ### 运行
 
 ```shell
-$ DD_ENV=demo \
-DD_SERVICE=python-profiling-demo \
-DD_VERSION=v0.0.1 \
-DD_PROFILING_ENABLED=true \
-DD_AGENT_HOST=localhost \
-DD_TRACE_AGENT_PORT=9529 \
-ddtrace-run python3 app.py
+$ bash ./run.sh
 ```
 
 ### 验证运行状态
@@ -85,8 +81,8 @@ $ curl 'http://127.0.0.1:8080/movies?q=spider' | jq
 - 启动服务并访问
 
 ```shell
-$ git clone https://github.com/GuanceCloud/python-profiling-demo.git
-$ cd python-profiling-demo
+$ git clone https://github.com/GuanceCloud/python-pyro-demo.git
+$ cd python-pyro-demo
 $ DK_DATAWAY=<your-dataway-url> docker-compose up -d
 $ curl 'http://127.0.0.1:8080/movies?q=spider'
 ```
